@@ -252,6 +252,20 @@ export default function LandingPage() {
           </Link>
         </div>
       </section>
+
+      {/* FOOTER - PROJECT CONTRIBUTORS */}
+      <footer className="w-full py-8 px-6 border-t border-slate-200 mt-12">
+        <div className="max-w-4xl mx-auto flex flex-col items-center justify-center space-y-3">
+          <p className="text-slate-700 font-bold text-sm sm:text-base uppercase tracking-wider text-center">
+            Digital Image Processing Project
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-slate-500 text-xs sm:text-sm font-medium">
+            <span className="whitespace-nowrap px-3 py-1 bg-slate-100 rounded-full border border-slate-200">Muhammad Usman - 231560</span>
+            <span className="whitespace-nowrap px-3 py-1 bg-slate-100 rounded-full border border-slate-200">Wasif Ullah - 231563</span>
+            <span className="whitespace-nowrap px-3 py-1 bg-slate-100 rounded-full border border-slate-200">Aazia Mehmood - 231605</span>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

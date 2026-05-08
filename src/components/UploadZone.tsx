@@ -6,7 +6,7 @@ import { Upload, Camera, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface UploadZoneProps {
-  onUploadComplete?: (id: string) => void;
+  onUploadComplete?: (id: string, originalSrc: string) => void;
 }
 
 export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
@@ -29,7 +29,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
           const newPageId = addPage(result);
           setIsLoading(false);
           if (onUploadComplete) {
-            onUploadComplete(newPageId);
+            onUploadComplete(newPageId, result);
           }
         }
       };
@@ -70,6 +70,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
       if (e.target.files && e.target.files[0]) {
         processFile(e.target.files[0]);
       }
+      e.target.value = ''; // Reset input to allow selecting the same file again
     },
     [processFile]
   );
@@ -84,6 +85,12 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
         onDragOver={handleDrag}
         onDragLeave={handleDrag}
         onDrop={handleDrop}
+        onClick={(e) => {
+          // Prevent triggering if a button/label inside was already clicked
+          if ((e.target as HTMLElement).closest('label')) return;
+          const input = document.getElementById('file-upload') as HTMLInputElement;
+          if (input) input.click();
+        }}
         className={`relative overflow-hidden rounded-2xl p-12 border-2 border-dashed transition-all duration-200 flex flex-col items-center justify-center min-h-[350px] cursor-pointer shadow-sm
           ${
             isDragActive

@@ -30,79 +30,66 @@ export default function ScannerPage() {
       });
   }, []);
 
-  const handleUploadComplete = async (newPageId: string) => {
+  const handleUploadComplete = async (newPageId: string, originalSrc: string) => {
     setIsProcessing(true);
     setError(null);
 
-    const checkStateAndProcess = () => {
-      const activePage = pages.find((p) => p.id === newPageId);
-      const currentPages = (window as any)._lastPages || pages;
-      const targetPage = currentPages.find((p: any) => p.id === newPageId) || activePage;
+    const img = new Image();
+    img.src = originalSrc;
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Could not create canvas context');
+        ctx.drawImage(img, 0, 0);
 
-      if (!targetPage) {
-        setTimeout(checkStateAndProcess, 100);
-        return;
-      }
+        let detectedPoints;
 
-      const img = new Image();
-      img.src = targetPage.originalSrc;
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) throw new Error('Could not create canvas context');
-          ctx.drawImage(img, 0, 0);
-
-          let detectedPoints;
-
-          if (typeof window !== 'undefined' && (window as any).cv && (window as any).cv.Mat) {
-            const cvInstance = (window as any).cv;
-            const corners = detectDocumentCorners(cvInstance, canvas);
-            
-            detectedPoints = corners.map((p) => ({
-              x: p.x / img.width,
-              y: p.y / img.height,
-            })) as [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number }];
-          } else {
-            detectedPoints = [
-              { x: 0.1, y: 0.1 },
-              { x: 0.9, y: 0.1 },
-              { x: 0.9, y: 0.9 },
-              { x: 0.1, y: 0.9 },
-            ] as [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number }];
-          }
-
-          updatePage(newPageId, {
-            points: detectedPoints,
-            rotation: 0,
-          });
-
-          setIsProcessing(false);
-          router.push('/editor');
-        } catch (err: any) {
-          console.error('Edge detection failed:', err);
-          updatePage(newPageId, {
-            points: [
-              { x: 0.1, y: 0.1 },
-              { x: 0.9, y: 0.1 },
-              { x: 0.9, y: 0.9 },
-              { x: 0.1, y: 0.9 },
-            ],
-            rotation: 0,
-          });
-          setIsProcessing(false);
-          router.push('/editor');
+        if (typeof window !== 'undefined' && (window as any).cv && (window as any).cv.Mat) {
+          const cvInstance = (window as any).cv;
+          const corners = detectDocumentCorners(cvInstance, canvas);
+          
+          detectedPoints = corners.map((p) => ({
+            x: p.x / img.width,
+            y: p.y / img.height,
+          })) as [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number }];
+        } else {
+          detectedPoints = [
+            { x: 0.1, y: 0.1 },
+            { x: 0.9, y: 0.1 },
+            { x: 0.9, y: 0.9 },
+            { x: 0.1, y: 0.9 },
+          ] as [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number }];
         }
-      };
-      img.onerror = () => {
-        setError('Failed to load document structure');
-        setIsProcessing(false);
-      };
-    };
 
-    checkStateAndProcess();
+        updatePage(newPageId, {
+          points: detectedPoints,
+          rotation: 0,
+        });
+
+        setIsProcessing(false);
+        router.push('/editor');
+      } catch (err: any) {
+        console.error('Edge detection failed:', err);
+        updatePage(newPageId, {
+          points: [
+            { x: 0.1, y: 0.1 },
+            { x: 0.9, y: 0.1 },
+            { x: 0.9, y: 0.9 },
+            { x: 0.1, y: 0.9 },
+          ],
+          rotation: 0,
+        });
+        setIsProcessing(false);
+        router.push('/editor');
+      }
+    };
+    img.onerror = () => {
+      setError('Failed to load document structure');
+      setIsProcessing(false);
+    };
   };
 
   useEffect(() => {
