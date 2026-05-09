@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Sparkles, Scan, FileCode, History, Home, Menu, X, ArrowRight } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 const navItems = [
   { href: '/', label: 'Home', icon: Home },
@@ -16,7 +16,8 @@ const navItems = [
 
 export const Navigation: React.FC = () => {
   const pathname = usePathname();
-  const [isOpen, setIsOpen] = useState(false);
+  const [menuOpenForPath, setMenuOpenForPath] = useState<string | null>(null);
+  const isOpen = menuOpenForPath === pathname;
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/90 backdrop-blur-md">
@@ -71,7 +72,10 @@ export const Navigation: React.FC = () => {
 
         {/* Mobile Hamburger Toggle */}
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          type="button"
+          aria-label={isOpen ? 'Close navigation menu' : 'Open navigation menu'}
+          aria-expanded={isOpen}
+          onClick={() => setMenuOpenForPath((prev) => (prev === pathname ? null : pathname))}
           className="md:hidden p-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
         >
           {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -79,46 +83,38 @@ export const Navigation: React.FC = () => {
       </div>
 
       {/* Mobile Menu Panel */}
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2 }}
-            className="md:hidden border-b border-slate-200 bg-white overflow-hidden"
-          >
-            <div className="px-6 py-4 flex flex-col gap-2">
-              {navItems.map((item) => {
-                const isActive = pathname === item.href;
-                const Icon = item.icon;
+      {isOpen && (
+        <div className="md:hidden border-b border-slate-200 bg-white overflow-hidden">
+          <div className="px-6 py-4 flex flex-col gap-2">
+            {navItems.map((item) => {
+              const isActive = pathname === item.href;
+              const Icon = item.icon;
 
-                return (
-                  <Link
-                    key={item.href}
-                    onClick={() => setIsOpen(false)}
-                    href={item.href}
-                    className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-semibold tracking-wide transition-all cursor-pointer
-                      ${isActive ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
+              return (
+                <Link
+                  key={item.href}
+                  onClick={() => setMenuOpenForPath(null)}
+                  href={item.href}
+                  className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-semibold tracking-wide transition-all cursor-pointer
+                    ${isActive ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'}`}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
 
-              <Link
-                href="/scanner"
-                onClick={() => setIsOpen(false)}
-                className="flex items-center justify-center gap-2 mt-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm cursor-pointer shadow-sm"
-              >
-                <span>Start Scan Now</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <Link
+              href="/scanner"
+              onClick={() => setMenuOpenForPath(null)}
+              className="flex items-center justify-center gap-2 mt-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm cursor-pointer shadow-sm"
+            >
+              <span>Start Scan Now</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

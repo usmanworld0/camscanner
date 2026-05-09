@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { useScan } from '@/store/ScanContext';
 import { Upload, Camera, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -13,6 +13,8 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
   const { addPage } = useScan();
   const [isDragActive, setIsDragActive] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const processFile = useCallback(
     (file: File) => {
@@ -29,7 +31,10 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
           const newPageId = addPage(result);
           setIsLoading(false);
           if (onUploadComplete) {
-            onUploadComplete(newPageId, result);
+            // Defer callback to the next frame so context updates are committed first.
+            requestAnimationFrame(() => {
+              void onUploadComplete(newPageId, result);
+            });
           }
         }
       };
@@ -86,10 +91,9 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
         onDragLeave={handleDrag}
         onDrop={handleDrop}
         onClick={(e) => {
-          // Prevent triggering if a button/label inside was already clicked
-          if ((e.target as HTMLElement).closest('label')) return;
-          const input = document.getElementById('file-upload') as HTMLInputElement;
-          if (input) input.click();
+          // Prevent triggering if an inner action button was clicked.
+          if ((e.target as HTMLElement).closest('[data-upload-action]')) return;
+          fileInputRef.current?.click();
         }}
         className={`relative overflow-hidden rounded-2xl p-12 border-2 border-dashed transition-all duration-200 flex flex-col items-center justify-center min-h-[350px] cursor-pointer shadow-sm
           ${
@@ -100,7 +104,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
       >
         <input
           type="file"
-          id="file-upload"
+          ref={fileInputRef}
           className="hidden"
           accept="image/*"
           onChange={handleFileChange}
@@ -108,7 +112,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
         />
         <input
           type="file"
-          id="camera-upload"
+          ref={cameraInputRef}
           className="hidden"
           accept="image/*"
           capture="environment"
@@ -138,21 +142,25 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3 pt-3 w-full justify-center">
-              <label
-                htmlFor="file-upload"
+              <button
+                type="button"
+                data-upload-action="gallery"
+                onClick={() => fileInputRef.current?.click()}
                 className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold border border-slate-250 transition-all cursor-pointer text-xs shadow-sm"
               >
                 <ImageIcon className="w-4 h-4 text-blue-600" />
                 Browse Gallery
-              </label>
+              </button>
 
-              <label
-                htmlFor="camera-upload"
+              <button
+                type="button"
+                data-upload-action="camera"
+                onClick={() => cameraInputRef.current?.click()}
                 className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold border border-blue-500 transition-all cursor-pointer text-xs shadow-sm"
               >
                 <Camera className="w-4 h-4" />
                 Capture Document
-              </label>
+              </button>
             </div>
           </div>
         )}

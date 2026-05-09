@@ -31,6 +31,14 @@ export default function ScannerPage() {
   }, []);
 
   const handleUploadComplete = async (newPageId: string, originalSrc: string) => {
+    await new Promise<void>((resolve) => {
+      if (typeof window === 'undefined') {
+        resolve();
+        return;
+      }
+      requestAnimationFrame(() => resolve());
+    });
+
     setIsProcessing(true);
     setError(null);
 
