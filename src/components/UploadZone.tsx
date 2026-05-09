@@ -5,6 +5,37 @@ import { useScan } from '@/store/ScanContext';
 import { Upload, Camera, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+// Helper to resize image client-side to maximum of 1600px width/height to optimize memory & performance
+const resizeImage = (dataUrl: string, maxDim: number = 1600): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = dataUrl;
+    img.onload = () => {
+      if (img.width <= maxDim && img.height <= maxDim) {
+        resolve(dataUrl);
+        return;
+      }
+
+      const scale = Math.min(maxDim / img.width, maxDim / img.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => {
+      resolve(dataUrl);
+    };
+  });
+};
+
 interface UploadZoneProps {
   onUploadComplete?: (id: string, originalSrc: string) => void;
 }
@@ -25,16 +56,29 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
 
       setIsLoading(true);
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
         const result = reader.result as string;
         if (result) {
-          const newPageId = addPage(result);
-          setIsLoading(false);
-          if (onUploadComplete) {
-            // Defer callback to the next frame so context updates are committed first.
-            requestAnimationFrame(() => {
-              void onUploadComplete(newPageId, result);
-            });
+          try {
+            // Resize the uploaded image to standard optimized size (max 1600px)
+            const optimizedResult = await resizeImage(result, 1600);
+            const newPageId = addPage(optimizedResult);
+            setIsLoading(false);
+            if (onUploadComplete) {
+              // Defer callback to the next frame so context updates are committed first.
+              requestAnimationFrame(() => {
+                void onUploadComplete(newPageId, optimizedResult);
+              });
+            }
+          } catch (error) {
+            console.error('Image optimization failed, falling back to original:', error);
+            const newPageId = addPage(result);
+            setIsLoading(false);
+            if (onUploadComplete) {
+              requestAnimationFrame(() => {
+                void onUploadComplete(newPageId, result);
+              });
+            }
           }
         }
       };

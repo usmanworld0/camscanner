@@ -64,14 +64,25 @@ export function detectDocumentCorners(cv: any, srcCanvas: HTMLCanvasElement): [P
     // 4. Find Contours
     cv.findContours(edged, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
 
-    // 5. Find the largest 4-sided contour
+    // 5. Sort contours by area to only inspect the top ones and avoid processing thousands of tiny noisy shapes
+    const contourList = [];
+    for (let i = 0; i < contours.size(); ++i) {
+      const contour = contours.get(i);
+      const area = cv.contourArea(contour);
+      contourList.push({ area, contour });
+    }
+
+    // Sort descending by area
+    contourList.sort((a, b) => b.area - a.area);
+
     let maxArea = 0;
     let approx = new cv.Mat();
     let docContour: any = null;
 
-    for (let i = 0; i < contours.size(); ++i) {
-      const contour = contours.get(i);
-      const area = cv.contourArea(contour);
+    // Only process the top 15 largest contours
+    const searchLimit = Math.min(contourList.length, 15);
+    for (let i = 0; i < searchLimit; ++i) {
+      const { area, contour } = contourList[i];
 
       // We only consider contours larger than 5% of the total image area
       if (area > (width * height * 0.05)) {
@@ -85,7 +96,11 @@ export function detectDocumentCorners(cv: any, srcCanvas: HTMLCanvasElement): [P
           docContour = approx.clone();
         }
       }
-      contour.delete();
+    }
+
+    // Crucial: Clean up ALL contours in the temporary list!
+    for (let i = 0; i < contourList.length; ++i) {
+      contourList[i].contour.delete();
     }
 
     if (docContour) {
@@ -102,6 +117,9 @@ export function detectDocumentCorners(cv: any, srcCanvas: HTMLCanvasElement): [P
       
       // Return ordered points: [TL, TR, BR, BL]
       return orderPoints(points);
+    } else {
+      // If approx was allocated but no contour met requirements, delete it to prevent leak
+      approx.delete();
     }
   } catch (error) {
     console.error('Error in corner detection, falling back to default:', error);

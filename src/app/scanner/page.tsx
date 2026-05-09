@@ -57,11 +57,31 @@ export default function ScannerPage() {
 
         if (typeof window !== 'undefined' && (window as any).cv && (window as any).cv.Mat) {
           const cvInstance = (window as any).cv;
-          const corners = detectDocumentCorners(cvInstance, canvas);
           
+          // Downscale further for OpenCV corner detection to be lightning-fast (max 800px)
+          const maxCVOffset = 800;
+          let cvScale = 1;
+          let cvCanvas = canvas;
+          if (img.width > maxCVOffset || img.height > maxCVOffset) {
+            cvScale = Math.min(maxCVOffset / img.width, maxCVOffset / img.height);
+            cvCanvas = document.createElement('canvas');
+            cvCanvas.width = img.width * cvScale;
+            cvCanvas.height = img.height * cvScale;
+            const cvCtx = cvCanvas.getContext('2d');
+            if (cvCtx) {
+              cvCtx.drawImage(canvas, 0, 0, cvCanvas.width, cvCanvas.height);
+            } else {
+              cvCanvas = canvas;
+              cvScale = 1;
+            }
+          }
+
+          const corners = detectDocumentCorners(cvInstance, cvCanvas);
+          
+          // Map back from downscaled canvas coordinates to 0..1 normalized range
           detectedPoints = corners.map((p) => ({
-            x: p.x / img.width,
-            y: p.y / img.height,
+            x: (p.x / cvScale) / img.width,
+            y: (p.y / cvScale) / img.height,
           })) as [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number }];
         } else {
           detectedPoints = [

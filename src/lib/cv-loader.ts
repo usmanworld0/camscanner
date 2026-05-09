@@ -26,7 +26,7 @@ export function loadOpenCV(): Promise<any> {
     };
 
     const script = document.createElement('script');
-    script.src = 'https://docs.opencv.org/4.5.5/opencv.js';
+    script.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0/dist/opencv.js';
     script.async = true;
     script.type = 'text/javascript';
 
