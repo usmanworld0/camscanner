@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Jimp } from 'jimp';
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,8 +15,11 @@ export async function POST(req: NextRequest) {
     const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
 
+    // Dynamically import Jimp to avoid bundler ESM/CJS interop issues
+    const jimpModule: any = await import('jimp');
+    const JimpLib = jimpModule.default ?? jimpModule.Jimp ?? jimpModule;
     // Read image using Jimp
-    const jimpImage: any = await Jimp.read(buffer);
+    const jimpImage: any = await JimpLib.read(buffer);
 
     // Apply backend processing based on filter mode
     switch (mode) {

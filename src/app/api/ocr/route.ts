@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Tesseract from 'tesseract.js';
+import { createWorker } from 'tesseract.js';
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,13 +12,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Run Tesseract OCR on the server side
-    const result = await Tesseract.recognize(image, lang, {
-      logger: (m) => console.log(`OCR Progress: ${m.status} - ${Math.round(m.progress * 100)}%`),
+    // Create a worker per-request and terminate after recognition to avoid leaking resources
+    const worker = (createWorker as any)({
+      logger: (m: any) => console.log(`OCR Progress: ${m.status} - ${Math.round((m.progress || 0) * 100)}%`),
     });
 
-    const text = result.data.text;
-    const confidence = result.data.confidence;
+    await worker.load();
+    await worker.loadLanguage(lang);
+    await worker.initialize(lang);
+
+    const { data } = await worker.recognize(image);
+    const text = data.text;
+    const confidence = data.confidence;
+
+    await worker.terminate();
 
     return NextResponse.json({
       success: true,
@@ -28,7 +35,7 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error('Error during backend OCR processing:', error);
     return NextResponse.json(
-      { error: 'OCR processing failed', details: error.message },
+      { error: 'OCR processing failed', details: error?.message || String(error) },
       { status: 500 }
     );
   }
