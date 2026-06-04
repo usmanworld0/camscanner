@@ -18,6 +18,7 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [imgDims, setImgDims] = useState({ width: 0, height: 0, left: 0, top: 0 });
+  const [containerDims, setContainerDims] = useState({ width: 0, height: 0 });
   const [activeHandle, setActiveHandle] = useState<number | null>(null);
 
   // Update image dimensions when loaded or window resizes
@@ -25,6 +26,10 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({
     if (imgRef.current) {
       const rect = imgRef.current.getBoundingClientRect();
       const containerRect = containerRef.current?.getBoundingClientRect();
+      setContainerDims({
+        width: containerRect?.width || 0,
+        height: containerRect?.height || 0,
+      });
       
       setImgDims({
         width: rect.width,
@@ -116,8 +121,8 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({
   
   const outerMaskPath = `
     M 0 0 
-    H ${containerRef.current?.getBoundingClientRect().width || 0} 
-    V ${containerRef.current?.getBoundingClientRect().height || 0} 
+    H ${containerDims.width} 
+    V ${containerDims.height} 
     H 0 Z 
     ${cropPath}
   `;

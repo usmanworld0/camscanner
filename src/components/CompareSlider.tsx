@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { Sparkles } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { SlidersHorizontal } from 'lucide-react';
 
 interface CompareSliderProps {
   originalSrc: string;
@@ -17,7 +17,21 @@ export const CompareSlider: React.FC<CompareSliderProps> = ({
   processedLabel = 'Scanify',
 }) => {
   const [sliderPosition, setSliderPosition] = useState(50); // percentage (0..100)
+  const [containerWidth, setContainerWidth] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const updateWidth = () => {
+      setContainerWidth(containerRef.current?.getBoundingClientRect().width || 0);
+    };
+
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(containerRef.current);
+
+    return () => observer.disconnect();
+  }, []);
 
   const handleMove = (clientX: number) => {
     if (!containerRef.current) return;
@@ -62,12 +76,12 @@ export const CompareSlider: React.FC<CompareSliderProps> = ({
           src={processedSrc}
           alt="Processed Scan"
           className="absolute inset-0 w-full h-full object-contain pointer-events-none p-2"
-          style={{ width: containerRef.current?.getBoundingClientRect().width || '100vw' }}
+          style={{ width: containerWidth || '100%' }}
         />
       </div>
 
       <div className="absolute bottom-4 right-4 px-3 py-1.5 rounded-lg bg-blue-600 border border-blue-500 text-white text-xs font-semibold uppercase tracking-wider z-20 flex items-center gap-1.5">
-        <Sparkles className="w-3 h-3" />
+        <SlidersHorizontal className="w-3 h-3" />
         {processedLabel}
       </div>
 

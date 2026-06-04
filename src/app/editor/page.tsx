@@ -10,7 +10,15 @@ import { CropOverlay } from '@/components/CropOverlay';
 import { FilterToolbar } from '@/components/FilterToolbar';
 import { CompareSlider } from '@/components/CompareSlider';
 import { Point, ScanMode } from '@/types';
-import { Crop, ArrowRight, ArrowLeft, Loader2, Undo, Redo, Check } from 'lucide-react';
+import {
+  getCropCoverage,
+  getMegapixels,
+  getQualityStatus,
+  getSkewDegrees,
+  scanModeLabels,
+  formatResolution,
+} from '@/utils/scanMetrics';
+import { Crop, ArrowRight, ArrowLeft, Loader2, Undo, Redo, Check, Ruler, Activity } from 'lucide-react';
 
 export default function EditorPage() {
   const router = useRouter();
@@ -34,22 +42,22 @@ export default function EditorPage() {
     if (!activePage) {
       router.push('/scanner');
     } else {
-      // Sync local state with active page
-      if (activePage.points) {
-        setLocalPoints(activePage.points);
-      } else {
-        // Default points
-        setLocalPoints([
-          { x: 0.15, y: 0.15 },
-          { x: 0.85, y: 0.15 },
-          { x: 0.85, y: 0.85 },
-          { x: 0.15, y: 0.85 },
-        ]);
-      }
-      setLocalFilterMode(activePage.filterMode || 'original');
-      if (activePage.croppedSrc) {
-        setCropMode(false);
-      }
+      queueMicrotask(() => {
+        if (activePage.points) {
+          setLocalPoints(activePage.points);
+        } else {
+          setLocalPoints([
+            { x: 0.15, y: 0.15 },
+            { x: 0.85, y: 0.15 },
+            { x: 0.85, y: 0.85 },
+            { x: 0.15, y: 0.85 },
+          ]);
+        }
+        setLocalFilterMode(activePage.filterMode || 'original');
+        if (activePage.croppedSrc) {
+          setCropMode(false);
+        }
+      });
     }
   }, [activePage, router]);
 
@@ -65,62 +73,57 @@ export default function EditorPage() {
     setLocalPoints(newPoints);
   };
 
+  const loadImageElement = (src: string) => {
+    return new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.src = src;
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Failed to load image structure'));
+    });
+  };
+
   const handleConfirmCrop = async () => {
-    if (!activePage || !localPoints) return;
+    if (!activePage || !localPoints) return false;
     setIsWarping(true);
     setError(null);
 
     try {
       const cv = await getCVInstance();
-      
-      const img = new Image();
-      img.src = activePage.originalSrc;
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) throw new Error('Failed to create offscreen context');
-          ctx.drawImage(img, 0, 0);
+      const img = await loadImageElement(activePage.originalSrc);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Failed to create offscreen context');
+      ctx.drawImage(img, 0, 0);
 
-          // Convert normalized percentage points back to absolute image pixels
-          const absoluteCorners = localPoints.map((p) => ({
-            x: p.x * img.width,
-            y: p.y * img.height,
-          })) as [Point, Point, Point, Point];
+      const absoluteCorners = localPoints.map((p) => ({
+        x: p.x * img.width,
+        y: p.y * img.height,
+      })) as [Point, Point, Point, Point];
 
-          const warpedCanvas = warpPerspective(cv, canvas, absoluteCorners);
-          const croppedBase64 = warpedCanvas.toDataURL('image/jpeg', 0.9);
+      const warpedCanvas = warpPerspective(cv, canvas, absoluteCorners);
+      const croppedBase64 = warpedCanvas.toDataURL('image/jpeg', 0.9);
+      const processedBase64 = applyImageFilter(warpedCanvas, localFilterMode, cv);
 
-          // Apply current filter to newly cropped canvas
-          const processedBase64 = applyImageFilter(warpedCanvas, localFilterMode, cv);
+      updatePage(activePage.id, {
+        points: localPoints,
+        croppedSrc: croppedBase64,
+        processedSrc: processedBase64,
+        filterMode: localFilterMode,
+        ocrText: null,
+        ocrConfidence: null,
+        sourceWidth: img.width,
+        sourceHeight: img.height,
+      });
 
-          // Update store with new assets
-          updatePage(activePage.id, {
-            points: localPoints,
-            croppedSrc: croppedBase64,
-            processedSrc: processedBase64,
-            filterMode: localFilterMode,
-            ocrText: null,
-            ocrConfidence: null,
-          });
-
-          setIsWarping(false);
-          setCropMode(false); // Move to filter review step
-        } catch (err: any) {
-          console.error('Warp transform execution failed:', err);
-          setError('Failed to warp perspective. Please check coordinate corners.');
-          setIsWarping(false);
-        }
-      };
-      img.onerror = () => {
-        setError('Failed to load image structure');
-        setIsWarping(false);
-      };
+      setCropMode(false);
+      return true;
     } catch (err: any) {
       console.error('OpenCV load failed inside editor:', err);
-      setError('Could not run perspective warp. Initialization pending.');
+      setError(err.message || 'Could not run perspective warp. Initialization pending.');
+      return false;
+    } finally {
       setIsWarping(false);
     }
   };
@@ -174,8 +177,8 @@ export default function EditorPage() {
 
   const handleProceedToResults = () => {
     if (cropMode) {
-      handleConfirmCrop().then(() => {
-        router.push('/results');
+      handleConfirmCrop().then((completed) => {
+        if (completed) router.push('/results');
       });
     } else {
       router.push('/results');
@@ -191,16 +194,20 @@ export default function EditorPage() {
     );
   }
 
+  const qualityStatus = getQualityStatus(activePage);
+  const cropCoverage = getCropCoverage(localPoints);
+  const skewDegrees = getSkewDegrees(localPoints);
+
   return (
     <div className="max-w-7xl mx-auto px-6 py-12 flex flex-col space-y-6">
       {/* Workspace Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-200 pb-5">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Crop &amp; Edit</h1>
+          <h1 className="text-2xl font-bold text-slate-800">Crop &amp; Enhance</h1>
           <p className="text-slate-500 text-xs mt-1">
             {cropMode
-              ? 'Adjust corner handles to align with document margins.'
-              : 'Apply a visual scan filter to enhance text readability.'}
+              ? 'Align the quadrilateral with the page boundary before perspective correction.'
+              : 'Select an image-processing mode and compare it against the flattened crop.'}
           </p>
         </div>
 
@@ -290,18 +297,58 @@ export default function EditorPage() {
             <div className="space-y-4">
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
                 <h4 className="text-xs font-bold text-blue-600 uppercase tracking-wider">
-                  Current Step
+                  Pipeline Step
                 </h4>
                 <p className="text-xs text-slate-650 leading-relaxed font-normal">
                   {cropMode
-                    ? 'Position the four crop corner markers over the page edges. This alignment removes tilts and isolated background shapes.'
-                    : 'Perspective flattened! Select a print correction filter below to adjust color levels or strip grey shadows.'}
+                    ? 'Corner selection defines the homography used for perspective transform. Keep handles on the true paper edges.'
+                    : `Current mode: ${scanModeLabels[localFilterMode]}. Re-run OCR after changing enhancement modes.`}
                 </p>
               </div>
 
-              <div className="flex justify-between items-center text-xs text-slate-400 px-1">
-                <span>Resolution:</span>
-                <span className="font-semibold text-slate-600">Source Image Loaded</span>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-slate-200 bg-white p-3">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <Ruler className="w-3 h-3" />
+                    Resolution
+                  </div>
+                  <p className="mt-1 text-xs font-semibold text-slate-700">{formatResolution(activePage)}</p>
+                  <p className="text-[10px] text-slate-400">{getMegapixels(activePage)}</p>
+                </div>
+
+                <div className="rounded-lg border border-slate-200 bg-white p-3">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <Activity className="w-3 h-3" />
+                    Quality
+                  </div>
+                  <p
+                    className={`mt-1 text-xs font-semibold ${
+                      qualityStatus.tone === 'good'
+                        ? 'text-emerald-700'
+                        : qualityStatus.tone === 'warn'
+                        ? 'text-amber-700'
+                        : 'text-rose-700'
+                    }`}
+                  >
+                    {qualityStatus.label}
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    {cropCoverage !== null ? `${cropCoverage.toFixed(0)}% crop area` : 'Crop pending'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-500 space-y-1">
+                <div className="flex justify-between gap-3">
+                  <span>Estimated skew</span>
+                  <span className="font-semibold text-slate-700">
+                    {skewDegrees !== null ? `${skewDegrees.toFixed(1)} deg` : '-'}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span>Active filter</span>
+                  <span className="font-semibold text-slate-700">{scanModeLabels[localFilterMode]}</span>
+                </div>
               </div>
             </div>
 

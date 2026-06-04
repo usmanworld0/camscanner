@@ -25,12 +25,6 @@ export const OCRPanel: React.FC<OCRPanelProps> = ({
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [lastProcessedSrc, setLastProcessedSrc] = useState<string | null>(null);
-
-  React.useEffect(() => {
-    setEditedText(ocrText || '');
-  }, [ocrText]);
-
   const runOCR = async () => {
     setIsRunning(true);
     setError(null);
@@ -55,19 +49,12 @@ export const OCRPanel: React.FC<OCRPanelProps> = ({
       onOCRComplete(text, confidence);
       setEditedText(text);
       setIsRunning(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('OCR Error:', err);
-      setError(err.message || 'Failed to extract text');
+      setError(err instanceof Error ? err.message : 'Failed to extract text');
       setIsRunning(false);
     }
   };
-
-  React.useEffect(() => {
-    if (imageSrc && imageSrc !== lastProcessedSrc && !ocrText && !isRunning) {
-      setLastProcessedSrc(imageSrc);
-      runOCR();
-    }
-  }, [imageSrc, ocrText, isRunning, lastProcessedSrc]);
 
   const handleCopy = async () => {
     if (!editedText) return;
@@ -113,7 +100,7 @@ export const OCRPanel: React.FC<OCRPanelProps> = ({
           <div className="space-y-1">
             <p className="text-slate-700 font-semibold text-sm">Extract text from scan</p>
             <p className="text-slate-450 text-xs max-w-xs mx-auto">
-              Runs optical character recognition locally to extract all text outlines from the document.
+              Runs OCR locally on the selected processed page. For best results, use adaptive binarization or contrast stretch first.
             </p>
           </div>
           <button

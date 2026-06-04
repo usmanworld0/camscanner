@@ -5,16 +5,17 @@ import { useRouter } from 'next/navigation';
 import { useScan } from '@/store/ScanContext';
 import { loadOpenCV } from '@/lib/cv-loader';
 import { detectDocumentCorners } from '@/utils/opencvFilters';
-import { UploadZone } from '@/components/UploadZone';
-import { Cpu, AlertCircle, Sparkles, FolderOpen, ArrowRight } from 'lucide-react';
+import { UploadZone, UploadedScan } from '@/components/UploadZone';
+import { Cpu, AlertCircle, FolderOpen, ArrowRight, Gauge } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 
 export default function ScannerPage() {
   const router = useRouter();
-  const { pages, updatePage } = useScan();
+  const { pages, updatePage, setActivePageId } = useScan();
   const [cvReady, setCvReady] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingCount, setProcessingCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   // Lazy-load OpenCV.js in background on mount
@@ -30,7 +31,7 @@ export default function ScannerPage() {
       });
   }, []);
 
-  const handleUploadComplete = async (newPageId: string, originalSrc: string) => {
+  const detectPointsFromImage = async (originalSrc: string) => {
     await new Promise<void>((resolve) => {
       if (typeof window === 'undefined') {
         resolve();
@@ -39,12 +40,14 @@ export default function ScannerPage() {
       requestAnimationFrame(() => resolve());
     });
 
-    setIsProcessing(true);
-    setError(null);
-
-    const img = new Image();
-    img.src = originalSrc;
-    img.onload = () => {
+    return new Promise<{
+      points: [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number }];
+      width: number;
+      height: number;
+    }>((resolve, reject) => {
+      const img = new Image();
+      img.src = originalSrc;
+      img.onload = () => {
       try {
         const canvas = document.createElement('canvas');
         canvas.width = img.width;
@@ -92,31 +95,56 @@ export default function ScannerPage() {
           ] as [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }, { x: number; y: number }];
         }
 
-        updatePage(newPageId, {
+        resolve({
           points: detectedPoints,
-          rotation: 0,
+          width: img.width,
+          height: img.height,
         });
-
-        setIsProcessing(false);
-        router.push('/editor');
       } catch (err: any) {
-        console.error('Edge detection failed:', err);
-        updatePage(newPageId, {
+        console.error('Edge detection failed, using default crop:', err);
+        resolve({
           points: [
             { x: 0.1, y: 0.1 },
             { x: 0.9, y: 0.1 },
             { x: 0.9, y: 0.9 },
             { x: 0.1, y: 0.9 },
           ],
-          rotation: 0,
+          width: img.width,
+          height: img.height,
         });
-        setIsProcessing(false);
-        router.push('/editor');
       }
     };
     img.onerror = () => {
-      setError('Failed to load document structure');
+        reject(new Error('Failed to load document structure'));
+      };
+    });
+  };
+
+  const handleUploadComplete = async (uploads: UploadedScan[]) => {
+    setIsProcessing(true);
+    setProcessingCount(uploads.length);
+    setError(null);
+
+    try {
+      for (const upload of uploads) {
+        const detection = await detectPointsFromImage(upload.originalSrc);
+        updatePage(upload.id, {
+          points: detection.points,
+          rotation: 0,
+          sourceWidth: detection.width,
+          sourceHeight: detection.height,
+        });
+      }
+
+      if (uploads[0]) {
+        setActivePageId(uploads[0].id);
+      }
+      router.push('/editor');
+    } catch (err: any) {
+      setError(err.message || 'Failed to prepare document pages');
+    } finally {
       setIsProcessing(false);
+      setProcessingCount(0);
     };
   };
 
@@ -134,11 +162,11 @@ export default function ScannerPage() {
           className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-700 text-xs font-semibold"
         >
           <Cpu className="w-3.5 h-3.5" />
-          <span>{cvReady ? 'Border Auto-Detection Active' : 'Initializing Scanner...'}</span>
+          <span>{cvReady ? 'OpenCV boundary detection ready' : 'Initializing boundary detection'}</span>
         </motion.div>
-        <h1 className="text-3xl sm:text-4xl font-bold text-slate-800">Scanner Workspace</h1>
+        <h1 className="text-3xl sm:text-4xl font-bold text-slate-800">Capture Workspace</h1>
         <p className="text-slate-500 text-xs sm:text-sm max-w-md mx-auto">
-          Upload an image, receipt, or screenshot. The crop utility will help isolate document boundaries.
+          Import page images, estimate document borders, then refine the crop and enhancement pipeline.
         </p>
       </div>
 
@@ -146,12 +174,12 @@ export default function ScannerPage() {
         <div className="clean-panel p-10 rounded-2xl bg-white border border-slate-200 flex flex-col items-center justify-center space-y-4 min-h-[300px] w-full max-w-2xl text-center shadow-sm">
           <div className="relative flex items-center justify-center">
             <div className="w-14 h-14 rounded-full border-4 border-t-blue-600 border-slate-100 animate-spin" />
-            <Sparkles className="absolute w-5 h-5 text-blue-600 animate-pulse" />
+            <Gauge className="absolute w-5 h-5 text-blue-600" />
           </div>
           <div className="space-y-1">
-            <h3 className="text-slate-800 font-semibold">Detecting Edges</h3>
+            <h3 className="text-slate-800 font-semibold">Estimating Document Corners</h3>
             <p className="text-slate-400 text-xs max-w-xs mx-auto">
-              Scanning coordinates to identify boundary corners and straighten skews.
+              Preparing {processingCount} {processingCount === 1 ? 'page' : 'pages'} for perspective correction.
             </p>
           </div>
         </div>

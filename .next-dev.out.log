@@ -1,0 +1,14 @@
+
+> camscaner@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.100.11:3000
+✓ Ready in 1287ms
+Creating turbopack project {
+  dir: 'C:\\Users\\ZAKKI BOSS TRADERS\\Desktop\\camscaner',
+  testMode: true
+}
+
+ GET / 200 in 975ms (next.js: 421ms, application-code: 554ms)

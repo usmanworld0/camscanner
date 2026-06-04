@@ -7,7 +7,14 @@ import { useScan } from '@/store/ScanContext';
 import { OCRPanel } from '@/components/OCRPanel';
 import { PDFExportButton } from '@/components/PDFExportButton';
 import { ImagePreview } from '@/components/ImagePreview';
-import { Check, Save, ArrowLeft, ArrowRight, Plus, Loader2 } from 'lucide-react';
+import {
+  formatResolution,
+  getCropCoverage,
+  getMegapixels,
+  getQualityStatus,
+  scanModeLabels,
+} from '@/utils/scanMetrics';
+import { Check, Save, ArrowRight, Plus, Loader2, ChevronLeft, ChevronRight, BarChart3 } from 'lucide-react';
 
 export default function ResultsPage() {
   const router = useRouter();
@@ -17,6 +24,7 @@ export default function ResultsPage() {
     activePageId,
     setActivePageId,
     updatePage,
+    movePage,
     saveCurrentSession,
     clearSession,
   } = useScan();
@@ -70,6 +78,8 @@ export default function ResultsPage() {
   }
 
   const srcToRender = activePage.processedSrc || activePage.croppedSrc || activePage.originalSrc;
+  const qualityStatus = getQualityStatus(activePage);
+  const cropCoverage = getCropCoverage(activePage.points);
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-12 flex flex-col space-y-6">
@@ -78,7 +88,7 @@ export default function ResultsPage() {
         <div className="space-y-0.5">
           <h1 className="text-2xl font-bold text-slate-800">Results &amp; Export</h1>
           <p className="text-slate-500 text-xs">
-            Compile document scans, transcribe text, and export final PDF files.
+            Review page order, extract text when needed, and compile the final document.
           </p>
         </div>
 
@@ -133,7 +143,7 @@ export default function ResultsPage() {
           <div className="clean-panel p-5 rounded-2xl bg-white border border-slate-200 space-y-3 shadow-sm">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Multi-Page Library ({pages.length} {pages.length === 1 ? 'Page' : 'Pages'})
+                Page Stack ({pages.length} {pages.length === 1 ? 'Page' : 'Pages'})
               </h3>
               
               <button
@@ -150,12 +160,13 @@ export default function ResultsPage() {
                 const isActive = p.id === activePageId;
                 const thumbSrc = p.processedSrc || p.croppedSrc || p.originalSrc;
                 return (
-                  <button
+                  <div
                     key={p.id}
-                    onClick={() => setActivePageId(p.id)}
-                    className="relative focus:outline-none flex-shrink-0 cursor-pointer"
+                    className="relative flex-shrink-0"
                   >
-                    <div
+                    <button
+                      type="button"
+                      onClick={() => setActivePageId(p.id)}
                       className={`w-14 h-18 rounded-lg overflow-hidden border bg-slate-50 relative shadow-sm transition-all duration-200
                         ${isActive ? 'border-blue-600 scale-102 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-350'}`}
                     >
@@ -167,8 +178,34 @@ export default function ResultsPage() {
                       <div className="absolute top-1 left-1 w-4 h-4 rounded bg-slate-900/80 backdrop-blur-sm border border-slate-700 flex items-center justify-center text-[9px] font-bold text-white">
                         {idx + 1}
                       </div>
+                    </button>
+                    <div className="mt-2 flex items-center justify-center gap-1">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          movePage(p.id, 'up');
+                        }}
+                        disabled={idx === 0}
+                        className="rounded border border-slate-200 bg-white p-1 text-slate-500 disabled:opacity-30"
+                        title="Move page left"
+                      >
+                        <ChevronLeft className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          movePage(p.id, 'down');
+                        }}
+                        disabled={idx === pages.length - 1}
+                        className="rounded border border-slate-200 bg-white p-1 text-slate-500 disabled:opacity-30"
+                        title="Move page right"
+                      >
+                        <ChevronRight className="w-3 h-3" />
+                      </button>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -177,6 +214,41 @@ export default function ResultsPage() {
 
         {/* Right Column (OCR Panels & Merge Compilation Options) */}
         <div className="lg:col-span-5 space-y-6">
+          <div className="clean-panel p-6 rounded-2xl bg-white border border-slate-200 flex flex-col space-y-4 shadow-sm">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
+              <BarChart3 className="w-4 h-4 text-blue-600" />
+              <h3 className="text-sm font-bold text-slate-800">Scan Measurements</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Resolution</p>
+                <p className="mt-1 font-semibold text-slate-700">{formatResolution(activePage)}</p>
+                <p className="text-[10px] text-slate-400">{getMegapixels(activePage)}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Capture</p>
+                <p
+                  className={`mt-1 font-semibold ${
+                    qualityStatus.tone === 'good'
+                      ? 'text-emerald-700'
+                      : qualityStatus.tone === 'warn'
+                      ? 'text-amber-700'
+                      : 'text-rose-700'
+                  }`}
+                >
+                  {qualityStatus.label}
+                </p>
+                <p className="text-[10px] text-slate-400">
+                  {cropCoverage !== null ? `${cropCoverage.toFixed(0)}% crop coverage` : 'No crop data'}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-500">
+              <span>Processing mode</span>
+              <span className="font-semibold text-slate-700">{scanModeLabels[activePage.filterMode]}</span>
+            </div>
+          </div>
+
           {/* PDF compilation options */}
           <div className="clean-panel p-6 rounded-2xl bg-white border border-slate-200 flex flex-col space-y-3 shadow-sm">
             <h3 className="text-sm font-bold text-slate-800 border-b border-slate-100 pb-2.5">
@@ -190,6 +262,7 @@ export default function ResultsPage() {
 
           {/* OCR Panel extraction block */}
           <OCRPanel
+            key={`${activePage.id}-${srcToRender.slice(0, 48)}`}
             imageSrc={srcToRender}
             ocrText={activePage.ocrText}
             ocrConfidence={activePage.ocrConfidence}

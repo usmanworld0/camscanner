@@ -3,14 +3,14 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Sparkles, Scan, FileCode, History, Home, Menu, X, ArrowRight } from 'lucide-react';
+import { Scan, FileCode, History, Home, Menu, X, ArrowRight, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const navItems = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/scanner', label: 'Scan', icon: Scan },
   { href: '/editor', label: 'Crop & Edit', icon: FileCode },
-  { href: '/results', label: 'Extract & PDF', icon: Sparkles },
+  { href: '/results', label: 'OCR & PDF', icon: FileText },
   { href: '/history', label: 'Library', icon: History },
 ];
 
@@ -28,7 +28,7 @@ export const Navigation: React.FC = () => {
             <Scan className="w-5 h-5 text-blue-600 group-hover:rotate-90 transition-transform duration-500" />
           </div>
           <span className="font-bold text-lg text-slate-800 tracking-wide">
-            Scanify<span className="text-blue-600">.</span>
+            DIP Scanner<span className="text-blue-600">.</span>
           </span>
         </Link>
 

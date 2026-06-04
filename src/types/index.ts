@@ -3,7 +3,15 @@ export interface Point {
   y: number;
 }
 
-export type ScanMode = 'original' | 'bw' | 'enhanced' | 'magic' | 'highcontrast';
+export type ScanMode =
+  | 'original'
+  | 'grayscale'
+  | 'bw'
+  | 'enhanced'
+  | 'denoise'
+  | 'sharpen'
+  | 'magic'
+  | 'highcontrast';
 
 export interface ScanPage {
   id: string;
@@ -15,6 +23,8 @@ export interface ScanPage {
   ocrConfidence: number | null;
   points: [Point, Point, Point, Point] | null; // Top-Left, Top-Right, Bottom-Right, Bottom-Left
   rotation: number; // 0, 90, 180, 270 degrees
+  sourceWidth: number | null;
+  sourceHeight: number | null;
 }
 
 export interface ScanSession {
@@ -25,5 +35,8 @@ export interface ScanSession {
     id: string;
     processedSrc: string;
     ocrText: string | null;
+    filterMode?: ScanMode;
+    sourceWidth?: number | null;
+    sourceHeight?: number | null;
   }[];
 }

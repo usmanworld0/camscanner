@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { ScanPage, ScanSession, ScanMode, Point } from '@/types';
+import { ScanPage, ScanSession } from '@/types';
 
 interface HistoryState {
   pages: ScanPage[];
@@ -18,6 +18,8 @@ interface ScanContextType {
   addPage: (originalSrc: string) => string;
   updatePage: (id: string, updates: Partial<ScanPage>) => void;
   removePage: (id: string) => void;
+  duplicatePage: (id: string) => void;
+  movePage: (id: string, direction: 'up' | 'down') => void;
   setActivePageId: (id: string | null) => void;
   
   // Undo/Redo edits
@@ -51,7 +53,8 @@ export const ScanProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const stored = localStorage.getItem('scanify_history');
       if (stored) {
         try {
-          setHistory(JSON.parse(stored));
+          const parsedHistory = JSON.parse(stored);
+          queueMicrotask(() => setHistory(parsedHistory));
         } catch (e) {
           console.error('Failed to parse scanner history:', e);
         }
@@ -105,6 +108,8 @@ export const ScanProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ocrConfidence: null,
       points: null,
       rotation: 0,
+      sourceWidth: null,
+      sourceHeight: null,
     };
     setPages((prev) => [...prev, newPage]);
     setActivePageId(id);
@@ -129,6 +134,38 @@ export const ScanProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
+  const duplicatePage = (id: string) => {
+    const page = pages.find((p) => p.id === id);
+    if (!page) return;
+    saveToUndoStack();
+    const copyId = Math.random().toString(36).substring(7);
+    const copy: ScanPage = {
+      ...JSON.parse(JSON.stringify(page)),
+      id: copyId,
+      ocrText: page.ocrText,
+      ocrConfidence: page.ocrConfidence,
+    };
+    const index = pages.findIndex((p) => p.id === id);
+    const nextPages = [...pages];
+    nextPages.splice(index + 1, 0, copy);
+    setPages(nextPages);
+    setActivePageId(copyId);
+  };
+
+  const movePage = (id: string, direction: 'up' | 'down') => {
+    const index = pages.findIndex((p) => p.id === id);
+    if (index === -1) return;
+
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= pages.length) return;
+
+    saveToUndoStack();
+    const nextPages = [...pages];
+    const [page] = nextPages.splice(index, 1);
+    nextPages.splice(targetIndex, 0, page);
+    setPages(nextPages);
+  };
+
   const saveCurrentSession = (title: string) => {
     if (pages.length === 0) return;
     const newSession: ScanSession = {
@@ -139,6 +176,9 @@ export const ScanProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: p.id,
         processedSrc: p.processedSrc || p.croppedSrc || p.originalSrc,
         ocrText: p.ocrText,
+        filterMode: p.filterMode,
+        sourceWidth: p.sourceWidth,
+        sourceHeight: p.sourceHeight,
       })),
     };
     const newHistory = [newSession, ...history];
@@ -158,11 +198,13 @@ export const ScanProvider: React.FC<{ children: React.ReactNode }> = ({ children
       originalSrc: p.processedSrc, // We only store the final processed image in history to save space
       croppedSrc: p.processedSrc,
       processedSrc: p.processedSrc,
-      filterMode: 'original',
+      filterMode: p.filterMode || 'original',
       ocrText: p.ocrText,
       ocrConfidence: 100,
       points: null,
       rotation: 0,
+      sourceWidth: p.sourceWidth || null,
+      sourceHeight: p.sourceHeight || null,
     }));
     setPages(restoredPages);
     setActivePageId(restoredPages[0]?.id || null);
@@ -184,6 +226,8 @@ export const ScanProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addPage,
         updatePage,
         removePage,
+        duplicatePage,
+        movePage,
         setActivePageId,
         saveToUndoStack,
         undo,

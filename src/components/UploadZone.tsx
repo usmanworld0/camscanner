@@ -5,6 +5,11 @@ import { useScan } from '@/store/ScanContext';
 import { Upload, Camera, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+export interface UploadedScan {
+  id: string;
+  originalSrc: string;
+}
+
 // Helper to resize image client-side to maximum of 1600px width/height to optimize memory & performance
 const resizeImage = (dataUrl: string, maxDim: number = 1600): Promise<string> => {
   return new Promise((resolve) => {
@@ -37,7 +42,7 @@ const resizeImage = (dataUrl: string, maxDim: number = 1600): Promise<string> =>
 };
 
 interface UploadZoneProps {
-  onUploadComplete?: (id: string, originalSrc: string) => void;
+  onUploadComplete?: (uploads: UploadedScan[]) => void | Promise<void>;
 }
 
 export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
@@ -48,47 +53,65 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const processFile = useCallback(
-    (file: File) => {
+    (file: File): Promise<UploadedScan | null> => {
       if (!file.type.startsWith('image/')) {
-        alert('Please upload an image file (PNG, JPG, JPEG)');
+        return Promise.resolve(null);
+      }
+
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const result = reader.result as string;
+          if (!result) {
+            resolve(null);
+            return;
+          }
+
+          try {
+            const optimizedResult = await resizeImage(result, 1800);
+            const newPageId = addPage(optimizedResult);
+            resolve({ id: newPageId, originalSrc: optimizedResult });
+          } catch (error) {
+            console.error('Image optimization failed, falling back to original:', error);
+            const newPageId = addPage(result);
+            resolve({ id: newPageId, originalSrc: result });
+          }
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      });
+    },
+    [addPage]
+  );
+
+  const processFiles = useCallback(
+    async (fileList: FileList | File[]) => {
+      const files = Array.from(fileList);
+      const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+
+      if (imageFiles.length === 0) {
+        alert('Please upload image files (PNG, JPG, JPEG, WEBP).');
         return;
       }
 
       setIsLoading(true);
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const result = reader.result as string;
-        if (result) {
-          try {
-            // Resize the uploaded image to standard optimized size (max 1600px)
-            const optimizedResult = await resizeImage(result, 1600);
-            const newPageId = addPage(optimizedResult);
-            setIsLoading(false);
-            if (onUploadComplete) {
-              // Defer callback to the next frame so context updates are committed first.
-              requestAnimationFrame(() => {
-                void onUploadComplete(newPageId, optimizedResult);
-              });
-            }
-          } catch (error) {
-            console.error('Image optimization failed, falling back to original:', error);
-            const newPageId = addPage(result);
-            setIsLoading(false);
-            if (onUploadComplete) {
-              requestAnimationFrame(() => {
-                void onUploadComplete(newPageId, result);
-              });
-            }
-          }
+      try {
+        const uploads: UploadedScan[] = [];
+        for (const file of imageFiles) {
+          const upload = await processFile(file);
+          if (upload) uploads.push(upload);
         }
-      };
-      reader.onerror = () => {
+
+        if (uploads.length > 0 && onUploadComplete) {
+          requestAnimationFrame(() => {
+            void onUploadComplete(uploads);
+          });
+        }
+      } finally {
         setIsLoading(false);
-        alert('Failed to read image file');
       };
-      reader.readAsDataURL(file);
     },
-    [addPage, onUploadComplete]
+    [onUploadComplete, processFile]
   );
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -107,21 +130,21 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
       e.stopPropagation();
       setIsDragActive(false);
 
-      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-        processFile(e.dataTransfer.files[0]);
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        void processFiles(e.dataTransfer.files);
       }
     },
-    [processFile]
+    [processFiles]
   );
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files[0]) {
-        processFile(e.target.files[0]);
+      if (e.target.files && e.target.files.length > 0) {
+        void processFiles(e.target.files);
       }
       e.target.value = ''; // Reset input to allow selecting the same file again
     },
-    [processFile]
+    [processFiles]
   );
 
   return (
@@ -151,6 +174,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
           ref={fileInputRef}
           className="hidden"
           accept="image/*"
+          multiple
           onChange={handleFileChange}
           disabled={isLoading}
         />
@@ -167,7 +191,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
         {isLoading ? (
           <div className="flex flex-col items-center space-y-3">
             <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
-            <p className="text-slate-500 text-sm font-medium">Importing document...</p>
+            <p className="text-slate-500 text-sm font-medium">Importing page images...</p>
           </div>
         ) : (
           <div className="flex flex-col items-center text-center space-y-5">
@@ -178,10 +202,10 @@ export const UploadZone: React.FC<UploadZoneProps> = ({ onUploadComplete }) => {
 
             <div className="space-y-1.5">
               <h3 className="text-lg font-bold text-slate-800">
-                Upload your document
+                Import document pages
               </h3>
               <p className="text-slate-500 text-xs max-w-sm">
-                Drag and drop your document image here, or use the options below. Supports PNG, JPG, and JPEG.
+                Drop one image or a batch of pages. The scanner accepts PNG, JPG, JPEG, and WEBP captures.
               </p>
             </div>
 

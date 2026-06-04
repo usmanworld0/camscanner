@@ -39,6 +39,10 @@ export function applyImageFilter(
   const h = destCanvas.height;
 
   switch (mode) {
+    case 'grayscale':
+      applyGrayscale(data);
+      break;
+
     case 'bw':
       // Adaptive Thresholding (B&W document mode) to remove shadows and keep crisp text
       // We use a dynamic radius based on size to avoid breaking strokes on high-resolution scans
@@ -50,6 +54,16 @@ export function applyImageFilter(
       // Sharpen and stretch contrast
       applyContrastBrightness(data, 1.25, 5);
       applySharpen(data, w, h, 0.4);
+      break;
+
+    case 'denoise':
+      applyDenoise(data, w, h);
+      applyContrastBrightness(data, 1.08, 3);
+      break;
+
+    case 'sharpen':
+      applyContrastBrightness(data, 1.12, 2);
+      applySharpen(data, w, h, 0.75);
       break;
 
     case 'magic':
@@ -81,6 +95,11 @@ function applyOpenCVFilter(srcCanvas: HTMLCanvasElement, mode: ScanMode, cv: any
         dst.delete();
         return srcCanvas.toDataURL('image/jpeg', 0.9);
 
+      case 'grayscale': {
+        cv.cvtColor(src, dst, cv.COLOR_RGBA2GRAY);
+        break;
+      }
+
       case 'bw': {
         // High quality Adaptive Gaussian Thresholding
         let gray = new cv.Mat();
@@ -106,6 +125,28 @@ function applyOpenCVFilter(srcCanvas: HTMLCanvasElement, mode: ScanMode, cv: any
           );
         } finally {
           gray.delete();
+          blurred.delete();
+        }
+        break;
+      }
+
+      case 'denoise': {
+        let denoised = new cv.Mat();
+        try {
+          cv.medianBlur(src, denoised, 3);
+          cv.convertScaleAbs(denoised, dst, 1.08, 3);
+        } finally {
+          denoised.delete();
+        }
+        break;
+      }
+
+      case 'sharpen': {
+        let blurred = new cv.Mat();
+        try {
+          cv.GaussianBlur(src, blurred, new cv.Size(0, 0), 1.1);
+          cv.addWeighted(src, 1.8, blurred, -0.8, 0, dst);
+        } finally {
           blurred.delete();
         }
         break;
@@ -229,6 +270,18 @@ function applyOpenCVFilter(srcCanvas: HTMLCanvasElement, mode: ScanMode, cv: any
 }
 
 /**
+ * Grayscale conversion (Pure JS fallback)
+ */
+function applyGrayscale(data: Uint8ClampedArray) {
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    data[i] = gray;
+    data[i + 1] = gray;
+    data[i + 2] = gray;
+  }
+}
+
+/**
  * Contrast and Brightness adjustment (Pure JS fallback)
  */
 function applyContrastBrightness(data: Uint8ClampedArray, contrast: number, brightness: number) {
@@ -242,6 +295,32 @@ function applyContrastBrightness(data: Uint8ClampedArray, contrast: number, brig
       val = val + brightness;
       // Clamp values
       data[i + c] = Math.max(0, Math.min(255, val));
+    }
+  }
+}
+
+/**
+ * Small median filter for salt-and-pepper noise reduction (Pure JS fallback)
+ */
+function applyDenoise(data: Uint8ClampedArray, w: number, h: number) {
+  const original = new Uint8ClampedArray(data);
+  const values = new Array<number>(9);
+
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const idx = (y * w + x) * 4;
+
+      for (let c = 0; c < 3; c++) {
+        let n = 0;
+        for (let yy = -1; yy <= 1; yy++) {
+          for (let xx = -1; xx <= 1; xx++) {
+            values[n] = original[((y + yy) * w + (x + xx)) * 4 + c];
+            n += 1;
+          }
+        }
+        values.sort((a, b) => a - b);
+        data[idx + c] = values[4];
+      }
     }
   }
 }

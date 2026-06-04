@@ -20,7 +20,7 @@ export default function HistoryPage() {
         <div className="space-y-0.5">
           <h1 className="text-2xl font-bold text-slate-800">Scanned Documents Library</h1>
           <p className="text-slate-500 text-xs">
-            Review, re-load, export, or manage your locally archived document scans.
+            Review, reload, export, or remove locally archived scan sessions.
           </p>
         </div>
 
@@ -29,7 +29,7 @@ export default function HistoryPage() {
           className="flex items-center gap-1.5 px-4.5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm hover:scale-102 active:scale-98 transition-all cursor-pointer"
         >
           <Plus className="w-4 h-4" />
-          <span>New Scan Pack</span>
+          <span>New Scan Session</span>
         </Link>
       </div>
 
@@ -38,7 +38,7 @@ export default function HistoryPage() {
         <ScanHistory onLoadSession={handleLoadSessionComplete} />
       </div>
 
-      {/* Premium Info Panel */}
+      {/* Scanner shortcut panel */}
       <div className="max-w-4xl mx-auto w-full pt-6">
         <div className="clean-panel p-5 rounded-xl bg-white border border-slate-200 flex flex-col sm:flex-row gap-4 items-center justify-between shadow-sm">
           <div className="flex items-center gap-3.5 text-left">
@@ -46,9 +46,9 @@ export default function HistoryPage() {
               <Scan className="w-5 h-5" />
             </div>
             <div className="space-y-0.5">
-              <h4 className="text-sm font-bold text-slate-850">Need to scan another document or invoice?</h4>
+              <h4 className="text-sm font-bold text-slate-850">Need another document set?</h4>
               <p className="text-slate-400 text-[11px] font-medium leading-relaxed max-w-md">
-                Launch the secure capture interface to crop borders, straighten tilts, and compile clean PDFs.
+                Open capture to estimate page borders, correct perspective, apply filters, and compile PDFs.
               </p>
             </div>
           </div>

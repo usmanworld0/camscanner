@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { ScanMode } from '@/types';
-import { Image, FileText, Sparkles, Wand2, Contrast } from 'lucide-react';
+import { scanModeDescriptions, scanModeLabels } from '@/utils/scanMetrics';
+import { Image, FileText, Contrast, Waves, Focus, Palette, CircleDot } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface FilterToolbarProps {
@@ -20,32 +21,50 @@ interface FilterOption {
 const filterOptions: FilterOption[] = [
   {
     mode: 'original',
-    label: 'Original',
-    description: 'No filters',
+    label: scanModeLabels.original,
+    description: scanModeDescriptions.original,
     icon: Image,
   },
   {
+    mode: 'grayscale',
+    label: scanModeLabels.grayscale,
+    description: scanModeDescriptions.grayscale,
+    icon: CircleDot,
+  },
+  {
     mode: 'bw',
-    label: 'B&W Scan',
-    description: 'Crisp shadow-free text',
+    label: scanModeLabels.bw,
+    description: scanModeDescriptions.bw,
     icon: FileText,
   },
   {
     mode: 'enhanced',
-    label: 'Enhanced',
-    description: 'Boost contrast',
-    icon: Sparkles,
+    label: scanModeLabels.enhanced,
+    description: scanModeDescriptions.enhanced,
+    icon: Contrast,
+  },
+  {
+    mode: 'denoise',
+    label: scanModeLabels.denoise,
+    description: scanModeDescriptions.denoise,
+    icon: Waves,
+  },
+  {
+    mode: 'sharpen',
+    label: scanModeLabels.sharpen,
+    description: scanModeDescriptions.sharpen,
+    icon: Focus,
   },
   {
     mode: 'magic',
-    label: 'Magic Color',
-    description: 'Vivid color pop',
-    icon: Wand2,
+    label: scanModeLabels.magic,
+    description: scanModeDescriptions.magic,
+    icon: Palette,
   },
   {
     mode: 'highcontrast',
-    label: 'High Contrast',
-    description: 'Heavy threshold',
+    label: scanModeLabels.highcontrast,
+    description: scanModeDescriptions.highcontrast,
     icon: Contrast,
   },
 ];
@@ -70,7 +89,7 @@ export const FilterToolbar: React.FC<FilterToolbarProps> = ({
               <motion.div
                 whileHover={{ y: -2 }}
                 whileTap={{ scale: 0.98 }}
-                className={`relative px-4 py-3.5 rounded-xl flex flex-col items-center justify-center border text-center transition-all duration-200 w-28 h-22
+                className={`relative px-3 py-3 rounded-lg flex flex-col items-center justify-center border text-center transition-all duration-200 w-32 h-24
                   ${
                     isActive
                       ? 'border-blue-600 bg-blue-50/50 shadow-sm'
@@ -90,12 +109,12 @@ export const FilterToolbar: React.FC<FilterToolbarProps> = ({
                 </div>
 
                 {/* Mode Label */}
-                <span className={`text-[11px] font-bold tracking-wide ${isActive ? 'text-blue-700' : 'text-slate-700'}`}>
+                <span className={`text-[11px] font-bold tracking-wide leading-tight ${isActive ? 'text-blue-700' : 'text-slate-700'}`}>
                   {opt.label}
                 </span>
 
                 {/* Subtext */}
-                <span className="text-[9px] text-slate-400 font-medium mt-0.5 max-w-[90px] truncate">
+                <span className="text-[9px] text-slate-400 font-medium mt-0.5 max-w-[112px] leading-tight line-clamp-2">
                   {opt.description}
                 </span>
 

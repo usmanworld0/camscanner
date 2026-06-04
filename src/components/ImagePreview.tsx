@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import { ScanPage } from '@/types';
 import { useScan } from '@/store/ScanContext';
-import { ZoomIn, ZoomOut, RotateCw, Trash2, Crop } from 'lucide-react';
+import { scanModeLabels } from '@/utils/scanMetrics';
+import { ZoomIn, ZoomOut, RotateCw, Trash2, Crop, Copy, Download } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface ImagePreviewProps {
@@ -15,7 +16,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
   page,
   onRecrop,
 }) => {
-  const { removePage, updatePage } = useScan();
+  const { removePage, updatePage, duplicatePage } = useScan();
   const [zoomScale, setZoomScale] = useState(1); // multiplier 1x to 3x
 
   const srcToRender = page.processedSrc || page.croppedSrc || page.originalSrc;
@@ -39,6 +40,13 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
     }
   };
 
+  const handleDownloadImage = () => {
+    const link = document.createElement('a');
+    link.href = srcToRender;
+    link.download = `scan-page-${page.id}.jpg`;
+    link.click();
+  };
+
   return (
     <div className="w-full max-w-2xl mx-auto flex flex-col space-y-4">
       {/* Floating Control Hub */}
@@ -46,6 +54,8 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
         {/* Zoom scale display */}
         <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold">
           Scale: <span className="text-blue-600">{Math.round(zoomScale * 100)}%</span>
+          <span className="hidden sm:inline text-slate-300">/</span>
+          <span className="hidden sm:inline text-slate-600">{scanModeLabels[page.filterMode]}</span>
         </div>
 
         {/* Action Controls */}
@@ -90,6 +100,22 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             title="Rotate 90 degrees"
           >
             <RotateCw className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={() => duplicatePage(page.id)}
+            className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-650 transition-all cursor-pointer shadow-sm"
+            title="Duplicate page"
+          >
+            <Copy className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={handleDownloadImage}
+            className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-650 transition-all cursor-pointer shadow-sm"
+            title="Download current page image"
+          >
+            <Download className="w-4 h-4" />
           </button>
 
           <span className="w-px h-5 bg-slate-200" />

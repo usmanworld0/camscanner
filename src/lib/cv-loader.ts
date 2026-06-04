@@ -26,22 +26,39 @@ export function loadOpenCV(): Promise<any> {
     };
 
     const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0/dist/opencv.js';
+    script.src = '/opencv.js';
     script.async = true;
     script.type = 'text/javascript';
 
     script.onload = () => {
-      console.log('OpenCV.js script injected and loaded.');
-      // Sometimes OpenCV initializes immediately, check if it's already there
+      console.log('OpenCV.js script injected and loaded from local path.');
       if ((window as any).cv && (window as any).cv.Mat) {
         resolve((window as any).cv);
       }
     };
 
     script.onerror = (err) => {
-      console.error('Failed to load OpenCV.js script:', err);
-      opencvLoadingPromise = null;
-      reject(new Error('Failed to load OpenCV.js script'));
+      console.warn('Failed to load local OpenCV.js script. Trying CDN fallback...', err);
+      
+      const fallbackScript = document.createElement('script');
+      fallbackScript.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.3/dist/opencv.js';
+      fallbackScript.async = true;
+      fallbackScript.type = 'text/javascript';
+
+      fallbackScript.onload = () => {
+        console.log('OpenCV.js script injected and loaded from CDN fallback.');
+        if ((window as any).cv && (window as any).cv.Mat) {
+          resolve((window as any).cv);
+        }
+      };
+
+      fallbackScript.onerror = (cdnErr) => {
+        console.error('Failed to load OpenCV.js script from CDN fallback:', cdnErr);
+        opencvLoadingPromise = null;
+        reject(new Error('Failed to load OpenCV.js script from local and CDN'));
+      };
+
+      document.body.appendChild(fallbackScript);
     };
 
     document.body.appendChild(script);
