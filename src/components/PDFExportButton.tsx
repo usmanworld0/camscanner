@@ -11,6 +11,12 @@ interface PDFExportButtonProps {
   fileName?: string;
 }
 
+interface PdfImage {
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+
 export const PDFExportButton: React.FC<PDFExportButtonProps> = ({
   pages,
   fileName = 'scanned-document',
@@ -19,37 +25,62 @@ export const PDFExportButton: React.FC<PDFExportButtonProps> = ({
   const [isExported, setIsExported] = useState(false);
   const [exportMode, setExportMode] = useState<'client' | 'backend'>('client');
 
+  const getPageImageSrc = (page: ScanPage) => page.processedSrc || page.croppedSrc || page.originalSrc;
+
+  const loadImageForPdf = (src: string): Promise<PdfImage> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+          reject(new Error('Could not prepare image for PDF export'));
+          return;
+        }
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        resolve({
+          dataUrl: canvas.toDataURL('image/jpeg', 0.92),
+          width: canvas.width,
+          height: canvas.height,
+        });
+      };
+
+      img.onerror = () => reject(new Error('Could not load a page image for PDF export'));
+      img.src = src;
+    });
+  };
+
+  const preparePdfImages = () => Promise.all(pages.map((page) => loadImageForPdf(getPageImageSrc(page))));
+
   const exportClientSide = async () => {
     setIsExporting(true);
     try {
+      const pdfImages = await preparePdfImages();
+      const [firstImage] = pdfImages;
+      if (!firstImage) return;
+
       const pdf = new jsPDF({
-        orientation: 'portrait',
+        orientation: firstImage.height > firstImage.width ? 'p' : 'l',
         unit: 'px',
+        format: [firstImage.width, firstImage.height],
         compress: true,
       });
 
-      for (let i = 0; i < pages.length; i++) {
-        const page = pages[i];
-        const imageSrc = page.processedSrc || page.croppedSrc || page.originalSrc;
-
-        const img = new Image();
-        img.src = imageSrc;
-        await new Promise((resolve) => {
-          img.onload = resolve;
-        });
-
-        const width = img.width;
-        const height = img.height;
-
+      pdfImages.forEach((image, i) => {
         if (i > 0) {
-          pdf.addPage([width, height], height > width ? 'p' : 'l');
-        } else {
-          pdf.deletePage(1);
-          pdf.addPage([width, height], height > width ? 'p' : 'l');
+          pdf.addPage([image.width, image.height], image.height > image.width ? 'p' : 'l');
         }
 
-        pdf.addImage(imageSrc, 'JPEG', 0, 0, width, height, undefined, 'FAST');
-      }
+        pdf.addImage(image.dataUrl, 'JPEG', 0, 0, image.width, image.height, undefined, 'FAST');
+      });
 
       pdf.save(`${fileName}.pdf`);
       setIsExported(true);
@@ -66,9 +97,7 @@ export const PDFExportButton: React.FC<PDFExportButtonProps> = ({
   const exportBackendSide = async () => {
     setIsExporting(true);
     try {
-      const imagesBase64 = pages.map(
-        (page) => page.processedSrc || page.croppedSrc || page.originalSrc
-      );
+      const imagesBase64 = (await preparePdfImages()).map((image) => image.dataUrl);
 
       const response = await fetch('/api/pdf', {
         method: 'POST',
@@ -87,8 +116,10 @@ export const PDFExportButton: React.FC<PDFExportButtonProps> = ({
       const link = document.createElement('a');
       link.href = url;
       link.download = `${fileName}.pdf`;
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(url);
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 
       setIsExported(true);
       setTimeout(() => setIsExported(false), 3000);

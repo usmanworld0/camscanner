@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useScan } from '@/store/ScanContext';
-import { loadOpenCV } from '@/lib/cv-loader';
 import { warpPerspective } from '@/utils/opencvFilters';
 import { applyImageFilter } from '@/utils/imageFilters';
 import { CropOverlay } from '@/components/CropOverlay';
@@ -19,6 +18,8 @@ import {
   formatResolution,
 } from '@/utils/scanMetrics';
 import { Crop, ArrowRight, ArrowLeft, Loader2, Undo, Redo, Check, Ruler, Activity } from 'lucide-react';
+
+const MAX_SYNC_OPENCV_CROP_PIXELS = 1200 * 1200;
 
 export default function EditorPage() {
   const router = useRouter();
@@ -61,12 +62,11 @@ export default function EditorPage() {
     }
   }, [activePage, router]);
 
-  // Load OpenCV instance
-  const getCVInstance = async () => {
-    if (typeof window !== 'undefined' && (window as any).cv && (window as any).cv.Mat) {
-      return (window as any).cv;
-    }
-    return await loadOpenCV();
+  const getReadyCVInstance = () => {
+    if (typeof window === 'undefined') return null;
+
+    const cv = (window as any).cv;
+    return cv && cv.Mat && cv.imread && cv.imshow ? cv : null;
   };
 
   const handlePointsChange = (newPoints: [Point, Point, Point, Point]) => {
@@ -76,10 +76,62 @@ export default function EditorPage() {
   const loadImageElement = (src: string) => {
     return new Promise<HTMLImageElement>((resolve, reject) => {
       const img = new Image();
-      img.src = src;
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error('Failed to load image structure'));
+      img.src = src;
     });
+  };
+
+  const cropCanvasToSelection = (
+    sourceCanvas: HTMLCanvasElement,
+    corners: [Point, Point, Point, Point]
+  ) => {
+    const xs = corners.map((point) => point.x);
+    const ys = corners.map((point) => point.y);
+    const left = Math.max(0, Math.floor(Math.min(...xs)));
+    const top = Math.max(0, Math.floor(Math.min(...ys)));
+    const right = Math.min(sourceCanvas.width, Math.ceil(Math.max(...xs)));
+    const bottom = Math.min(sourceCanvas.height, Math.ceil(Math.max(...ys)));
+    const width = Math.max(1, right - left);
+    const height = Math.max(1, bottom - top);
+
+    const destCanvas = document.createElement('canvas');
+    destCanvas.width = width;
+    destCanvas.height = height;
+    const destCtx = destCanvas.getContext('2d');
+    if (!destCtx) throw new Error('Failed to create crop context');
+
+    destCtx.drawImage(sourceCanvas, left, top, width, height, 0, 0, width, height);
+    return destCanvas;
+  };
+
+  const createWarpInput = (
+    sourceCanvas: HTMLCanvasElement,
+    corners: [Point, Point, Point, Point]
+  ) => {
+    const sourcePixels = sourceCanvas.width * sourceCanvas.height;
+    if (sourcePixels <= MAX_SYNC_OPENCV_CROP_PIXELS) {
+      return { canvas: sourceCanvas, corners };
+    }
+
+    const scale = Math.sqrt(MAX_SYNC_OPENCV_CROP_PIXELS / sourcePixels);
+    const resizedCanvas = document.createElement('canvas');
+    resizedCanvas.width = Math.max(1, Math.round(sourceCanvas.width * scale));
+    resizedCanvas.height = Math.max(1, Math.round(sourceCanvas.height * scale));
+    const resizedCtx = resizedCanvas.getContext('2d');
+    if (!resizedCtx) {
+      return { canvas: sourceCanvas, corners };
+    }
+
+    resizedCtx.drawImage(sourceCanvas, 0, 0, resizedCanvas.width, resizedCanvas.height);
+
+    return {
+      canvas: resizedCanvas,
+      corners: corners.map((point) => ({
+        x: point.x * scale,
+        y: point.y * scale,
+      })) as [Point, Point, Point, Point],
+    };
   };
 
   const handleConfirmCrop = async () => {
@@ -88,7 +140,6 @@ export default function EditorPage() {
     setError(null);
 
     try {
-      const cv = await getCVInstance();
       const img = await loadImageElement(activePage.originalSrc);
       const canvas = document.createElement('canvas');
       canvas.width = img.width;
@@ -102,26 +153,41 @@ export default function EditorPage() {
         y: p.y * img.height,
       })) as [Point, Point, Point, Point];
 
-      const warpedCanvas = warpPerspective(cv, canvas, absoluteCorners);
+      let cv: any | null = null;
+      let warpedCanvas: HTMLCanvasElement;
+
+      try {
+        cv = getReadyCVInstance();
+        if (!cv) {
+          throw new Error('Using fast canvas crop path');
+        }
+        const warpInput = createWarpInput(canvas, absoluteCorners);
+        warpedCanvas = warpPerspective(cv, warpInput.canvas, warpInput.corners);
+      } catch (cvErr) {
+        console.warn('OpenCV perspective warp unavailable; using canvas crop fallback:', cvErr);
+        warpedCanvas = cropCanvasToSelection(canvas, absoluteCorners);
+      }
+
       const croppedBase64 = warpedCanvas.toDataURL('image/jpeg', 0.9);
-      const processedBase64 = applyImageFilter(warpedCanvas, localFilterMode, cv);
+      const processedBase64 = croppedBase64;
 
       updatePage(activePage.id, {
         points: localPoints,
         croppedSrc: croppedBase64,
         processedSrc: processedBase64,
-        filterMode: localFilterMode,
+        filterMode: 'original',
         ocrText: null,
         ocrConfidence: null,
         sourceWidth: img.width,
         sourceHeight: img.height,
       });
 
+      setLocalFilterMode('original');
       setCropMode(false);
       return true;
     } catch (err: any) {
       console.error('OpenCV load failed inside editor:', err);
-      setError(err.message || 'Could not run perspective warp. Initialization pending.');
+      setError(err.message || 'Could not prepare the selected crop.');
       return false;
     } finally {
       setIsWarping(false);
@@ -133,30 +199,7 @@ export default function EditorPage() {
     setLocalFilterMode(mode);
 
     try {
-      const cv = await getCVInstance();
-      const img = new Image();
-      img.src = activePage.croppedSrc;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        ctx.drawImage(img, 0, 0);
-
-        const filteredBase64 = applyImageFilter(canvas, mode, cv);
-        updatePage(activePage.id, {
-          filterMode: mode,
-          processedSrc: filteredBase64,
-          ocrText: null,
-          ocrConfidence: null,
-        });
-      };
-    } catch (err) {
-      console.error('Failed to load OpenCV for filter enhancement, falling back:', err);
-      const img = new Image();
-      img.src = activePage.croppedSrc;
-      img.onload = () => {
+      const img = await loadImageElement(activePage.croppedSrc);
         const canvas = document.createElement('canvas');
         canvas.width = img.width;
         canvas.height = img.height;
@@ -171,7 +214,9 @@ export default function EditorPage() {
           ocrText: null,
           ocrConfidence: null,
         });
-      };
+    } catch (err) {
+      console.error('Failed to apply filter enhancement:', err);
+      setError('Could not apply the selected filter.');
     }
   };
 
@@ -375,6 +420,7 @@ export default function EditorPage() {
 
               <button
                 onClick={handleProceedToResults}
+                disabled={isWarping}
                 className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-lg bg-blue-50 hover:bg-blue-100/70 border border-blue-200 text-blue-700 font-bold transition-all cursor-pointer"
               >
                 <span>Proceed to Export</span>
