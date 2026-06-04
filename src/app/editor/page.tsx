@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useScan } from '@/store/ScanContext';
-import { warpPerspective } from '@/utils/opencvFilters';
 import { applyImageFilter } from '@/utils/imageFilters';
 import { CropOverlay } from '@/components/CropOverlay';
 import { FilterToolbar } from '@/components/FilterToolbar';
@@ -18,8 +17,6 @@ import {
   formatResolution,
 } from '@/utils/scanMetrics';
 import { Crop, ArrowRight, ArrowLeft, Loader2, Undo, Redo, Check, Ruler, Activity } from 'lucide-react';
-
-const MAX_SYNC_OPENCV_CROP_PIXELS = 1200 * 1200;
 
 export default function EditorPage() {
   const router = useRouter();
@@ -62,13 +59,6 @@ export default function EditorPage() {
     }
   }, [activePage, router]);
 
-  const getReadyCVInstance = () => {
-    if (typeof window === 'undefined') return null;
-
-    const cv = (window as any).cv;
-    return cv && cv.Mat && cv.imread && cv.imshow ? cv : null;
-  };
-
   const handlePointsChange = (newPoints: [Point, Point, Point, Point]) => {
     setLocalPoints(newPoints);
   };
@@ -105,35 +95,6 @@ export default function EditorPage() {
     return destCanvas;
   };
 
-  const createWarpInput = (
-    sourceCanvas: HTMLCanvasElement,
-    corners: [Point, Point, Point, Point]
-  ) => {
-    const sourcePixels = sourceCanvas.width * sourceCanvas.height;
-    if (sourcePixels <= MAX_SYNC_OPENCV_CROP_PIXELS) {
-      return { canvas: sourceCanvas, corners };
-    }
-
-    const scale = Math.sqrt(MAX_SYNC_OPENCV_CROP_PIXELS / sourcePixels);
-    const resizedCanvas = document.createElement('canvas');
-    resizedCanvas.width = Math.max(1, Math.round(sourceCanvas.width * scale));
-    resizedCanvas.height = Math.max(1, Math.round(sourceCanvas.height * scale));
-    const resizedCtx = resizedCanvas.getContext('2d');
-    if (!resizedCtx) {
-      return { canvas: sourceCanvas, corners };
-    }
-
-    resizedCtx.drawImage(sourceCanvas, 0, 0, resizedCanvas.width, resizedCanvas.height);
-
-    return {
-      canvas: resizedCanvas,
-      corners: corners.map((point) => ({
-        x: point.x * scale,
-        y: point.y * scale,
-      })) as [Point, Point, Point, Point],
-    };
-  };
-
   const handleConfirmCrop = async () => {
     if (!activePage || !localPoints) return false;
     setIsWarping(true);
@@ -153,21 +114,7 @@ export default function EditorPage() {
         y: p.y * img.height,
       })) as [Point, Point, Point, Point];
 
-      let cv: any | null = null;
-      let warpedCanvas: HTMLCanvasElement;
-
-      try {
-        cv = getReadyCVInstance();
-        if (!cv) {
-          throw new Error('Using fast canvas crop path');
-        }
-        const warpInput = createWarpInput(canvas, absoluteCorners);
-        warpedCanvas = warpPerspective(cv, warpInput.canvas, warpInput.corners);
-      } catch (cvErr) {
-        console.warn('OpenCV perspective warp unavailable; using canvas crop fallback:', cvErr);
-        warpedCanvas = cropCanvasToSelection(canvas, absoluteCorners);
-      }
-
+      const warpedCanvas = cropCanvasToSelection(canvas, absoluteCorners);
       const croppedBase64 = warpedCanvas.toDataURL('image/jpeg', 0.9);
       const processedBase64 = croppedBase64;
 
